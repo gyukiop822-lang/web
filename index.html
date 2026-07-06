@@ -73,14 +73,11 @@
     // --- GANTI URL INI DENGAN URL WEB APP GAS ANDA ---
     const API_URL = "https://script.google.com/macros/s/AKfycbzQm0cAz_1j6L2bYwo8aXom_J6V6m16Tv4f3KbpOaMb-jJwM66hne19zUCNWKUInm3LzA/exec"; 
     
-    let currentPage = 1;
     let isFetching = false;
-    let hasMoreData = true;
     let currentSearch = "";
 
     const galleryGrid = document.getElementById('galleryGrid');
     const loadingIndicator = document.getElementById('loadingIndicator');
-    const sentinel = document.getElementById('sentinel');
     const searchInput = document.getElementById('searchInput');
 
     // Komponen Modal
@@ -89,25 +86,21 @@
     const modalTitle = document.getElementById('modalTitle');
     const closeModal = document.getElementById('closeModal');
 
-    // Fungsi Fetch Data
-    async function fetchImages(page, search = "") {
-      if (isFetching || !hasMoreData) return;
+    // Fungsi Fetch Data (Meminta SEMUA data sekaligus menggunakan all=true)
+    async function fetchAllImages(search = "") {
+      if (isFetching) return;
       isFetching = true;
       loadingIndicator.classList.remove('hidden');
+      galleryGrid.innerHTML = ''; // Kosongkan grid sebelum memuat baru
 
       try {
-        const response = await fetch(`${API_URL}?page=${page}&limit=20&search=${encodeURIComponent(search)}`);
+        const response = await fetch(`${API_URL}?all=true&search=${encodeURIComponent(search)}`);
         const result = await response.json();
 
         if (result.status === "success") {
-          if (result.data.length === 0 || result.hasMore === false) {
-            hasMoreData = false;
-          }
           renderImages(result.data);
-          currentPage++;
         } else {
           console.error("API Error:", result.message);
-          hasMoreData = false; // stop retry-looping on repeated API errors
         }
       } catch (error) {
         console.error("Fetch Error:", error);
@@ -120,32 +113,24 @@
     // Fungsi Render DOM
     function renderImages(images) {
       images.forEach(img => {
-        if (!img.imageUrl) return; // Lewati jika tidak ada File ID
+        if (!img.thumbnailUrl) return; 
 
         const itemDiv = document.createElement('div');
         itemDiv.className = 'masonry-item relative group overflow-hidden rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer';
         
+        // Gunakan thumbnailUrl untuk grid agar loading sangat cepat
         itemDiv.innerHTML = `
-          <img src="${img.imageUrl}" alt="${img.filename}" class="w-full h-auto object-cover opacity-0 transition-opacity duration-500 transform group-hover:scale-105 transition-transform duration-500" loading="lazy" decoding="async" onload="this.classList.remove('opacity-0')" onerror="this.closest('.masonry-item').remove()">
+          <img src="${img.thumbnailUrl}" alt="${img.filename}" class="w-full h-auto object-cover opacity-0 transition-opacity duration-500 transform group-hover:scale-105 transition-transform duration-500" loading="lazy" decoding="async" onload="this.classList.remove('opacity-0')" onerror="this.closest('.masonry-item').remove()">
           <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
             <h3 class="text-white font-semibold text-sm truncate">${img.galleryTitle}</h3>
           </div>
         `;
 
-        // Event listener untuk Modal
-        itemDiv.addEventListener('click', () => openModal(img.imageUrl, img.galleryTitle));
+        // Kirim fullUrl ke modal agar gambar HD muncul saat di-klik
+        itemDiv.addEventListener('click', () => openModal(img.fullUrl, img.galleryTitle));
         galleryGrid.appendChild(itemDiv);
       });
     }
-
-    // Infinite Scroll Observer
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && !isFetching && hasMoreData) {
-        fetchImages(currentPage, currentSearch);
-      }
-    }, { rootMargin: '600px' }); // Trigger 600px sebelum menabrak bawah, biar prefetch lebih awal & scroll terasa mulus
-
-    observer.observe(sentinel);
 
     // Fitur Pencarian (Debounced)
     let searchTimeout;
@@ -155,12 +140,9 @@
         const query = e.target.value.trim();
         if (query !== currentSearch) {
           currentSearch = query;
-          currentPage = 1;
-          hasMoreData = true;
-          galleryGrid.innerHTML = ''; // Reset grid
-          fetchImages(currentPage, currentSearch);
+          fetchAllImages(currentSearch);
         }
-      }, 500); // Tunggu 500ms setelah user berhenti mengetik
+      }, 500);
     });
 
     // Kontrol Modal
@@ -168,7 +150,6 @@
       modalImage.src = src;
       modalTitle.textContent = title;
       modal.classList.remove('hidden');
-      // Timeout kecil untuk memicu transisi CSS
       setTimeout(() => modal.classList.remove('opacity-0'), 10); 
     }
 
@@ -180,13 +161,11 @@
       }, 300);
     });
 
-    // Tutup modal jika klik di luar gambar
     modal.addEventListener('click', (e) => {
       if (e.target === modal) closeModal.click();
     });
 
-    // Initial Load
-    fetchImages(currentPage, currentSearch);
+    // Initial Load - Langsung tarik semua data
+    fetchAllImages(currentSearch);
   </script>
-</body>
 </html>
